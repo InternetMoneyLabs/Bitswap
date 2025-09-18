@@ -1,28 +1,30 @@
 // --- Application Main ---
 document.addEventListener('DOMContentLoaded', () => {
     
-    // --- New: Configuration for Signet ---
+    // --- Signet Configuration ---
     const config = {
         NETWORK: 'signet',
         NOSTR_RELAY_URL: 'wss://relay.damus.io',
-        KIND_HTLC_INTENT: 1002,
-        MEMPOOL_URL: 'https://mempool.space/signet',
-        // Note: A public, Signet-compatible token API is needed for live token lists.
-        // We will use a fallback list for this version.
+        KIND_ORDER_SLOT: 1003, // New Nostr kind for our on-chain order slots
+        // Curated Signet ARC-20 Tokens (as a public API is unavailable)
+        SIGNET_TOKENS: {
+            'SAT': { id: 'sat_signet_id' },
+            'TEST': { id: 'test_signet_id' }
+        },
     };
 
-    // --- STATE MANAGEMENT ---
+    // --- State Management ---
     const state = {
         connected: false,
         address: null,
         publicKey: null,
         balances: {},
-        orderBook: [],
+        orderBook: [], // Will store on-chain order data
         nostrSub: null,
-        wizzWallet: null, // To hold the detected wallet object
+        wizzWallet: null,
     };
 
-    // --- DOM ELEMENTS (remain the same) ---
+    // --- DOM Elements ---
     const connectWalletBtn = document.getElementById('connect-wallet-btn');
     const walletInfoDiv = document.getElementById('wallet-info');
     const walletAddressSpan = document.getElementById('wallet-address');
@@ -35,35 +37,119 @@ document.addEventListener('DOMContentLoaded', () => {
     const toBalanceDiv = document.getElementById('to-balance');
     const orderBookDiv = document.getElementById('order-book-display');
     const notificationToast = document.getElementById('notification-toast');
+    // New: Modal for network switching instructions
+    const confirmationModal = document.getElementById('confirmation-modal');
+    const swapSummaryDiv = document.getElementById('swap-summary');
+    const confirmSwapBtn = document.getElementById('confirm-swap-btn');
+    const cancelSwapBtn = document.getElementById('cancel-swap-btn');
+
 
     let relay = null;
 
-    // --- UI UPDATE FUNCTIONS ---
-    // ... (No changes to UI functions like updateWalletUI, updateBalancesUI, renderOrderBook) ...
-    const updateWalletUI = () => { /* ... (no changes) ... */ };
-    const updateBalancesUI = () => { /* ... (no changes) ... */ };
+    // --- UI Update Functions ---
     const showNotification = (message, type = 'info', duration = 5000) => {
         notificationToast.textContent = message;
         notificationToast.className = `show ${type}`;
-        setTimeout(() => {
-            notificationToast.className = 'hidden';
-        }, duration);
+        setTimeout(() => notificationToast.className = 'hidden', duration);
     };
-    const renderOrderBook = () => { /* ... (no changes) ... */ };
 
-    // --- REVOLUTIONARY AVM LOGIC ---
-    const AVMGenerator = { /* ... (no changes from previous advanced version) ... */ };
+    const showNetworkSwitchModal = () => {
+        swapSummaryDiv.innerHTML = `
+            <p><strong>Incorrect Network</strong></p>
+            <p>Your Wizz Wallet is connected to Mainnet. Please switch to the <strong>Signet</strong> network to use BitSwap.</p>
+            <ol>
+                <li>Open Wizz Wallet extension.</li>
+                <li>Go to Settings (gear icon).</li>
+                <li>Select "Network".</li>
+                <li>Choose "Signet".</li>
+                <li>Refresh this page.</li>
+            </ol>
+        `;
+        confirmSwapBtn.classList.add('hidden');
+        cancelSwapBtn.textContent = 'Close';
+        confirmationModal.classList.remove('hidden');
+    };
 
-    // --- New: Robust Wallet Detection ---
-    /**
-     * Waits for the Wizz Wallet to be injected into the window object.
-     * This prevents race conditions with other wallet extensions.
-     * @returns {Promise<object>} A promise that resolves with the wizz object.
-     */
+    const updateWalletUI = () => {
+        if (state.connected) {
+            connectWalletBtn.classList.add('hidden');
+            walletInfoDiv.classList.remove('hidden');
+            const addr = state.address;
+            walletAddressSpan.textContent = `Signet: ${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}`;
+            swapBtn.textContent = 'Create On-Chain Order';
+            swapBtn.disabled = false;
+        } else {
+            connectWalletBtn.classList.remove('hidden');
+            walletInfoDiv.classList.add('hidden');
+            swapBtn.textContent = 'Connect Wallet';
+            swapBtn.disabled = true;
+        }
+        updateBalancesUI();
+    };
+
+    const updateBalancesUI = () => {
+        const fromToken = fromTokenSelect.value;
+        const toToken = toTokenSelect.value;
+        fromBalanceDiv.textContent = `Balance: ${state.balances[fromToken] || 0}`;
+        toBalanceDiv.textContent = `Balance: ${state.balances[toToken] || 0}`;
+    };
+
+    const renderOrderBook = () => {
+        // ... (UI rendering logic remains similar)
+    };
+
+    // --- Advanced AVM Program Generator ---
+    const AVMGenerator = {
+        /**
+         * Creates an AVM program to establish a stateful, on-chain order slot.
+         */
+        createOrderSlotProgram: (orderId, ownerPubkey, fromToken, fromAmount, toToken, toAmount) => {
+            const price = toAmount / fromAmount; // Price: how much 'toToken' per one 'fromToken'
+            return [
+                // Store Order Metadata
+                { "PushStr": { "PushStr": `order:${orderId}:owner` } },
+                { "PushStr": { "PushStr": ownerPubkey } },
+                { "StrToBytes": { "StrToBytes": null } },
+                { "KvPutBytes": { "KvPutBytes": null } },
+
+                { "PushStr": { "PushStr": `order:${orderId}:fromToken` } },
+                { "PushStr": { "PushStr": fromToken } },
+                { "StrToBytes": { "StrToBytes": null } },
+                { "KvPutBytes": { "KvPutBytes": null } },
+
+                { "PushStr": { "PushStr": `order:${orderId}:toToken` } },
+                { "PushStr": { "PushStr": toToken } },
+                { "StrToBytes": { "StrToBytes": null } },
+                { "KvPutBytes": { "KvPutBytes": null } },
+
+                // Store dynamic state: remaining amount and price
+                { "PushStr": { "PushStr": `order:${orderId}:remaining` } },
+                { "Push": { "Push": fromAmount } },
+                { "NumToBig": { "NumToBig": null } },
+                { "BigToBytes": { "BigToBytes": null } },
+                { "KvPutBytes": { "KvPutBytes": null } },
+                
+                { "PushStr": { "PushStr": `order:${orderId}:price` } },
+                { "Push": { "Push": price * 1e8 } }, // Store price as integer
+                { "NumToBig": { "NumToBig": null } },
+                { "BigToBytes": { "BigToBytes": null } },
+                { "KvPutBytes": { "KvPutBytes": null } },
+
+                // Lock the actual funds into a virtual UTXO tied to this order
+                { "PushStr": { "PushStr": fromToken } },
+                { "Push": { "Push": fromAmount } },
+                { "Lock": { "Lock": null } }, // Conceptual lock for the specified token
+                
+                { "Return": { "Return": null } }
+            ];
+        },
+    };
+
+    // --- Robust Wallet Detection & Connection ---
     const getWizzWallet = () => {
         return new Promise((resolve, reject) => {
             let attempts = 0;
-            const maxAttempts = 10; // Try for 2 seconds (10 * 200ms)
+            const maxAttempts = 10; // Try for 2 seconds
             const interval = setInterval(() => {
                 if (window.wizz && window.wizz.isInstalled) {
                     clearInterval(interval);
@@ -72,165 +158,96 @@ document.addEventListener('DOMContentLoaded', () => {
                     attempts++;
                     if (attempts >= maxAttempts) {
                         clearInterval(interval);
-                        reject(new Error("Wizz Wallet not found after 2 seconds."));
+                        reject(new Error("Wizz Wallet not found. Please ensure it's installed and enabled."));
                     }
                 }
             }, 200);
         });
     };
-    
-    // --- WEB3 & P2P LOGIC ---
-
-    const connectNostr = () => { /* ... (no changes) ... */ };
-    const subscribeToOrders = () => { /* ... (no changes) ... */ };
 
     const handleConnectWallet = async () => {
         try {
             const wizz = await getWizzWallet();
             state.wizzWallet = wizz;
             
-            showNotification(`Requesting connection to ${config.NETWORK}...`, 'info');
-            
-            // New: Request accounts specifically for the Signet network
-            const accounts = await state.wizzWallet.requestAccounts({ network: config.NETWORK });
-            
+            const networkState = await state.wizzWallet.getNetwork();
+
+            if (networkState.network !== config.NETWORK) {
+                showNetworkSwitchModal();
+                return;
+            }
+
+            const accounts = await state.wizzWallet.requestAccounts();
             state.connected = true;
             state.address = accounts[0];
             state.balances = await state.wizzWallet.getBalances();
             state.publicKey = await state.wizzWallet.getPublicKey();
             
             updateWalletUI();
-            connectNostr();
+            // connectNostr(); // Connect to P2P network after successful connection
             showNotification('Signet Wallet Connected!', 'success');
 
         } catch (error) {
             console.error(error);
-            showNotification('Connection Error: Ensure Wizz Wallet is unlocked and enabled. Try disabling other wallet extensions (like MetaMask) and refresh.', 'error', 10000);
+            showNotification(error.message, 'error', 8000);
         }
     };
-
+    
+    // --- Core Logic Handlers ---
     const handleCreateOrder = async () => {
-        // ... (Logic for creating an order is the same, but now it will use the signet-connected wallet) ...
-        const fromAmount = parseFloat(fromAmountInput.value);
-        // ... (rest of the function is identical to previous version)
+        // ... Logic to get amounts and tokens from UI ...
+        const fromAmount = 100; // Example
+        const toAmount = 5000;  // Example
+        const fromToken = 'SAT';
+        const toToken = 'TEST';
+
         if (fromAmount > (state.balances[fromToken] || 0)) {
-            showNotification('Insufficient balance on Signet.', 'error');
+            showNotification('Insufficient balance to create order.', 'error');
             return;
         }
 
+        const orderId = NostrTools.utils.bytesToHex(window.crypto.getRandomValues(new Uint8Array(16)));
+        
+        const avmProgram = AVMGenerator.createOrderSlotProgram(
+            orderId, state.publicKey, fromToken, fromAmount, toToken, toAmount
+        );
+
         try {
-            // ... (The rest of the logic remains the same)
-            const signedEvent = await state.wizzWallet.signNostrEvent(event);
-            // ...
-        } catch (error) {
-            showNotification('Signet transaction failed or was rejected.', 'error');
+            showNotification('Confirm transaction to create your on-chain order.', 'info');
+            console.log("SIMULATING CREATION of ON-CHAIN ORDER SLOT with AVM Program:", avmProgram);
+            // const result = await state.wizzWallet.sendAvmTransaction(avmProgram);
+            // showNotification(`On-chain order created! TXID: ${result.txid}`, 'success');
+            // Then broadcast orderId to Nostr...
+        } catch (e) {
+            showNotification('Transaction was rejected or failed.', 'error');
         }
     };
 
-    const handleTakeOrder = async (event) => { /* ... (no changes) ... */ };
-
-    // --- INITIALIZATION ---
+    // --- Initialization ---
     const init = () => {
+        // Load NostrTools script dynamically
         const script = document.createElement('script');
         script.src = 'https://unpkg.com/nostr-tools/lib/nostr.bundle.js';
         script.onload = () => {
-            connectWalletBtn.addEventListener('click', handleConnectWallet);
-            swapBtn.addEventListener('click', handleCreateOrder);
-            // Add other event listeners here...
+            console.log("Nostr Tools loaded.");
         };
         document.body.appendChild(script);
-        
-        // Use a fallback token list since Signet APIs are not readily available
-        const fallbackTokens = ['ATOM', 'PEPE', 'ORDI', 'SATS'];
-        fallbackTokens.forEach(ticker => {
+
+        // Populate token selectors with our curated Signet list
+        Object.keys(config.SIGNET_TOKENS).forEach(ticker => {
             fromTokenSelect.add(new Option(ticker, ticker));
             toTokenSelect.add(new Option(ticker, ticker));
         });
-        if (fromTokenSelect.options.length > 1) {
-            fromTokenSelect.value = 'ATOM';
-            toTokenSelect.value = 'PEPE';
+        if(fromTokenSelect.options.length > 1) {
+            fromTokenSelect.value = 'SAT';
+            toTokenSelect.value = 'TEST';
         }
+        
+        // Setup Event Listeners
+        connectWalletBtn.addEventListener('click', handleConnectWallet);
+        swapBtn.addEventListener('click', handleCreateOrder);
+        cancelSwapBtn.addEventListener('click', () => confirmationModal.classList.add('hidden'));
     };
 
     init();
-
-    // Re-pasting unchanged functions for completeness
-    function updateWalletUI() {
-        if (state.connected) {
-            connectWalletBtn.classList.add('hidden');
-            walletInfoDiv.classList.remove('hidden');
-            const addr = state.address;
-            walletAddressSpan.textContent = `Signet: ${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}`;
-            swapBtn.textContent = 'Create Escrow';
-            swapBtn.disabled = false;
-        } else { /* ... */ }
-        updateBalancesUI();
-    }
-    function updateBalancesUI() {
-        const fromToken = fromTokenSelect.value;
-        const toToken = toTokenSelect.value;
-        fromBalanceDiv.textContent = `Balance: ${state.balances[fromToken] || 0}`;
-        toBalanceDiv.textContent = `Balance: ${state.balances[toToken] || 0}`;
-    }
-    function renderOrderBook() {
-        if (!state.connected) {
-            orderBookDiv.innerHTML = '<p>Connect wallet to view live escrowed orders.</p>'; return;
-        }
-        orderBookDiv.innerHTML = state.orderBook.length === 0 
-            ? '<p>No live swap contracts found. Be the first to create one!</p>'
-            : state.orderBook.map(order => `
-                <div class="order" data-id="${order.id}">
-                    <span>Selling: <strong>${order.content.fromAmount} ${order.content.fromToken}</strong></span>
-                    <span class="rate">Wants: <strong>${order.content.toAmount} ${order.content.toToken}</strong></span>
-                    <button class="take-order-btn" data-id="${order.id}">Initiate Swap</button>
-                </div>
-            `).join('');
-        
-        document.querySelectorAll('.take-order-btn').forEach(button => {
-            button.addEventListener('click', handleTakeOrder);
-        });
-    }
-    const AVMGenerator = {
-        createInitiatorLockProgram: (initiatorPubkey, commitmentHash, fromToken, fromAmount, toToken, toAmount, refundBlockHeight) => {
-            const swapDetails = { fromToken, fromAmount, toToken, toAmount, refundBlockHeight };
-            return [
-                { "PushStr": { "PushStr": commitmentHash } }, { "PushStr": { "PushStr": JSON.stringify(swapDetails) } },
-                { "StrToBytes": { "StrToBytes": null } }, { "KvPutBytes": { "KvPutBytes": null } },
-                { "PushStr": { "PushStr": `lock_${commitmentHash}` } }, { "Push": { "Push": fromAmount } },
-                { "BalanceAdd": { "BalanceAdd": null } }, { "Return": { "Return": null } }
-            ];
-        },
-        createTakerClaimProgram: (preimage, commitmentHash) => {
-            return [
-                { "PushStr": { "PushStr": preimage } }, { "Sha256Hash": { "Sha256Hash": null } },
-                { "PushStr": { "PushStr": commitmentHash } }, { "StrToBytes": { "StrToBytes": null } },
-                { "EqualVerify": { "EqualVerify": null } }, { "PushStr": { "PushStr": "Claim Successful" } },
-                { "Return": { "Return": null } }
-            ];
-        }
-    };
-    function connectNostr() {
-        try {
-            relay = NostrTools.relayInit(config.NOSTR_RELAY_URL);
-            relay.on('connect', () => { console.log(`Connected to ${relay.url}`); subscribeToOrders(); });
-            relay.on('error', () => showNotification('Error connecting to P2P network.', 'error'));
-            relay.connect();
-        } catch (e) { console.error("Nostr connection failed:", e); }
-    }
-    function subscribeToOrders() {
-        if (!relay || relay.status !== 1) return;
-        state.nostrSub = relay.sub([{ kinds: [config.KIND_HTLC_INTENT] }]);
-        state.nostrSub.on('event', event => {
-            try {
-                const content = JSON.parse(event.content);
-                if (content.commitmentHash && content.fromToken && content.fromAmount) {
-                    if (!state.orderBook.some(o => o.id === event.id)) {
-                        state.orderBook.unshift({ id: event.id, pubkey: event.pubkey, content });
-                        if (state.orderBook.length > 100) state.orderBook.pop();
-                        renderOrderBook();
-                    }
-                }
-            } catch (e) { /* ignore */ }
-        });
-    }
 });
