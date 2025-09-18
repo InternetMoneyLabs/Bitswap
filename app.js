@@ -1,11 +1,9 @@
 // --- Application Main ---
 document.addEventListener('DOMContentLoaded', () => {
     
-    // --- Signet Configuration ---
+    // --- Configuration ---
     const config = {
         NETWORK: 'signet',
-        NOSTR_RELAY_URL: 'wss://relay.damus.io',
-        KIND_ORDER_INTENT: 1004,
     };
 
     // --- State Management ---
@@ -14,8 +12,6 @@ document.addEventListener('DOMContentLoaded', () => {
         address: null,
         publicKey: null,
         balances: {},
-        orderBook: [],
-        nostrSub: null,
         wizzWallet: null,
     };
 
@@ -24,22 +20,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const walletInfoDiv = document.getElementById('wallet-info');
     const walletAddressSpan = document.getElementById('wallet-address');
     const swapBtn = document.getElementById('swap-btn');
-    const fromAmountInput = document.getElementById('from-amount');
-    const toAmountInput = document.getElementById('to-amount');
-    const fromTokenSelect = document.getElementById('from-token-select');
-    const toTokenSelect = document.getElementById('to-token-select');
-    const fromBalanceDiv = document.getElementById('from-balance');
-    const toBalanceDiv = document.getElementById('to-balance');
-    const orderBookDiv = document.getElementById('order-book-display');
     const notificationToast = document.getElementById('notification-toast');
     const confirmationModal = document.getElementById('confirmation-modal');
     const swapSummaryDiv = document.getElementById('swap-summary');
     const confirmSwapBtn = document.getElementById('confirm-swap-btn');
     const cancelSwapBtn = document.getElementById('cancel-swap-btn');
+    const fromTokenSelect = document.getElementById('from-token-select');
+    const toTokenSelect = document.getElementById('to-token-select');
 
-    let relay = null;
 
-    // --- UI Update & Helper Functions ---
+    // --- UI & Helper Functions ---
     const showNotification = (message, type = 'info', duration = 5000) => {
         notificationToast.textContent = message;
         notificationToast.className = `show ${type}`;
@@ -66,37 +56,65 @@ document.addEventListener('DOMContentLoaded', () => {
         confirmationModal.classList.remove('hidden');
     };
     
-    // --- The Definitive Wallet Detector ---
-    const getWizzWallet = () => {
-        return new Promise((resolve, reject) => {
-            let attempts = 0;
-            const maxAttempts = 20; // Wait up to 4 seconds, which is a long time
-            
-            const interval = setInterval(() => {
-                // We ONLY look for the unique `window.wizz` object.
-                if (window.wizz && window.wizz.isInstalled) {
-                    clearInterval(interval);
-                    resolve(window.wizz);
-                } else {
+    // --- Definitive Multi-Stage Wallet Detector ---
+    let walletDetectionPromise = null;
+
+    function findWizzWallet() {
+        if (walletDetectionPromise) {
+            return walletDetectionPromise;
+        }
+
+        walletDetectionPromise = new Promise((resolve, reject) => {
+            const startDetection = () => {
+                let attempts = 0;
+                const maxAttempts = 15; // Wait up to 3 seconds
+
+                const interval = setInterval(() => {
+                    if (window.wizz && window.wizz.isInstalled) {
+                        clearInterval(interval);
+                        console.log("Wizz Wallet detected successfully.");
+                        return resolve(window.wizz);
+                    }
+                    
                     attempts++;
+
                     if (attempts >= maxAttempts) {
                         clearInterval(interval);
-                        const errorMessage = "Wizz Wallet not detected. The most common cause is a conflict with other wallet extensions (like MetaMask or Yours Wallet) that load first. The most reliable solution is to temporarily disable other wallets and refresh the page.";
-                        reject(new Error(errorMessage));
+                        // Intelligent Error Reporting after failing
+                        if (window.ethereum) {
+                            reject(new Error("Conflict Detected: Another wallet (like MetaMask) is active, but Wizz Wallet is not responding. Please try disabling other wallet extensions and refresh."));
+                        } else {
+                            reject(new Error("Wizz Wallet not found. Please ensure it is installed, enabled, and that your browser is up to date."));
+                        }
                     }
-                }
-            }, 200);
-        });
-    };
+                }, 200);
+            };
 
-    const handleConnectWallet = async () => {
+            // Wait for the entire window to load before starting detection
+            if (document.readyState === 'complete') {
+                startDetection();
+            } else {
+                window.addEventListener('load', startDetection, { once: true });
+            }
+        });
+        
+        return walletDetectionPromise;
+    }
+
+
+    async function handleConnectWallet() {
         try {
-            const wizz = await getWizzWallet();
+            connectWalletBtn.disabled = true;
+            connectWalletBtn.textContent = 'Scanning...';
+            
+            const wizz = await findWizzWallet();
             state.wizzWallet = wizz;
             
             const networkState = await state.wizzWallet.getNetwork();
             if (networkState.network.toLowerCase() !== config.NETWORK) {
                 showNetworkSwitchModal();
+                connectWalletBtn.disabled = false;
+                connectWalletBtn.textContent = 'Connect Wallet';
                 return;
             }
 
@@ -106,24 +124,27 @@ document.addEventListener('DOMContentLoaded', () => {
             state.balances = await state.wizzWallet.getBalances();
             state.publicKey = await state.wizzWallet.getPublicKey();
             
-            updateWalletUI(); // This function is now defined below
+            updateWalletUI();
             showNotification('Signet Wallet Connected!', 'success');
-            // connectNostr(); // Re-enable when ready
 
         } catch (error) {
             console.error(error);
-            showNotification(error.message, 'error', 12000); // Show error for longer
+            showNotification(error.message, 'error', 12000);
+            connectWalletBtn.disabled = false;
+            connectWalletBtn.textContent = 'Retry Connection';
+            // Reset promise to allow re-scanning
+            walletDetectionPromise = null;
         }
     };
     
-    // Moved full function definitions here to avoid declaration errors
+    // --- UI Functions ---
     function updateWalletUI() {
         if (state.connected) {
             connectWalletBtn.classList.add('hidden');
             walletInfoDiv.classList.remove('hidden');
             const addr = state.address;
             walletAddressSpan.textContent = `Signet: ${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}`;
-            swapBtn.textContent = 'Create Gasless Order';
+            swapBtn.textContent = 'Create Order';
             swapBtn.disabled = false;
         } else {
             connectWalletBtn.classList.remove('hidden');
@@ -131,23 +152,11 @@ document.addEventListener('DOMContentLoaded', () => {
             swapBtn.textContent = 'Connect Wallet';
             swapBtn.disabled = true;
         }
-        updateBalancesUI();
-    };
-
-    function updateBalancesUI() {
-        const fromToken = fromTokenSelect.value;
-        const toToken = toTokenSelect.value;
-        fromBalanceDiv.textContent = `Balance: ${state.balances[fromToken] || 0}`;
-        toBalanceDiv.textContent = `Balance: ${state.balances[toToken] || 0}`;
     };
 
     // --- Initialization ---
     const init = () => {
-        const script = document.createElement('script');
-        script.src = 'https://unpkg.com/nostr-tools/lib/nostr.bundle.js';
-        script.onload = () => console.log("Nostr Tools loaded.");
-        document.body.appendChild(script);
-
+        // Populate static UI elements
         const signetTokens = ['SAT', 'TEST', 'ATOM', 'BTC'];
         signetTokens.forEach(ticker => {
             fromTokenSelect.add(new Option(ticker, ticker));
@@ -158,8 +167,18 @@ document.addEventListener('DOMContentLoaded', () => {
             toTokenSelect.value = 'TEST';
         }
         
+        // Setup Event Listeners
         connectWalletBtn.addEventListener('click', handleConnectWallet);
         cancelSwapBtn.addEventListener('click', () => confirmationModal.classList.add('hidden'));
+
+        // Pre-emptively start looking for the wallet on page load
+        findWizzWallet().then(wizz => {
+            state.wizzWallet = wizz;
+            console.log("Wizz Wallet pre-emptively detected.");
+            showNotification("Wizz Wallet detected! Click 'Connect' to proceed.", 'info');
+        }).catch(() => {
+            console.warn("Wizz Wallet not found on initial scan. Waiting for user action.");
+        });
     };
 
     init();
