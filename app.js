@@ -5,7 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const config = {
         NETWORK: 'signet',
         NOSTR_RELAY_URL: 'wss://relay.damus.io',
-        KIND_ORDER_INTENT: 1004, // Final Nostr kind for gasless signed orders
+        KIND_ORDER_INTENT: 1004,
     };
 
     // --- State Management ---
@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
         address: null,
         publicKey: null,
         balances: {},
-        orderBook: [], // Stores off-chain signed orders
+        orderBook: [],
         nostrSub: null,
         wizzWallet: null,
     };
@@ -65,31 +65,15 @@ document.addEventListener('DOMContentLoaded', () => {
         cancelSwapBtn.textContent = 'Close';
         confirmationModal.classList.remove('hidden');
     };
-
-    const updateWalletUI = () => {
-        if (state.connected) {
-            connectWalletBtn.classList.add('hidden');
-            walletInfoDiv.classList.remove('hidden');
-            const addr = state.address;
-            walletAddressSpan.textContent = `Signet: ${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}`;
-            swapBtn.textContent = 'Create Gasless Order';
-            swapBtn.disabled = false;
-        } else {
-            connectWalletBtn.classList.remove('hidden');
-            walletInfoDiv.classList.add('hidden');
-            swapBtn.textContent = 'Connect Wallet';
-            swapBtn.disabled = true;
-        }
-    };
     
-    // ... Other UI functions remain the same ...
-
-    // --- Robust Wallet Detection & Connection ---
+    // --- The Definitive Wallet Detector ---
     const getWizzWallet = () => {
         return new Promise((resolve, reject) => {
             let attempts = 0;
-            const maxAttempts = 15; // Wait up to 3 seconds
+            const maxAttempts = 20; // Wait up to 4 seconds, which is a long time
+            
             const interval = setInterval(() => {
+                // We ONLY look for the unique `window.wizz` object.
                 if (window.wizz && window.wizz.isInstalled) {
                     clearInterval(interval);
                     resolve(window.wizz);
@@ -97,8 +81,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     attempts++;
                     if (attempts >= maxAttempts) {
                         clearInterval(interval);
-                        // Provide a much more helpful error message
-                        reject(new Error("Wizz Wallet not found. A conflict with another wallet (like MetaMask or Yours Wallet) may be preventing it from loading. Please try disabling other wallet extensions and refresh the page."));
+                        const errorMessage = "Wizz Wallet not detected. The most common cause is a conflict with other wallet extensions (like MetaMask or Yours Wallet) that load first. The most reliable solution is to temporarily disable other wallets and refresh the page.";
+                        reject(new Error(errorMessage));
                     }
                 }
             }, 200);
@@ -122,14 +106,39 @@ document.addEventListener('DOMContentLoaded', () => {
             state.balances = await state.wizzWallet.getBalances();
             state.publicKey = await state.wizzWallet.getPublicKey();
             
-            updateWalletUI();
+            updateWalletUI(); // This function is now defined below
             showNotification('Signet Wallet Connected!', 'success');
-            // connectNostr(); // Connect to P2P network
+            // connectNostr(); // Re-enable when ready
 
         } catch (error) {
             console.error(error);
-            showNotification(error.message, 'error', 10000);
+            showNotification(error.message, 'error', 12000); // Show error for longer
         }
+    };
+    
+    // Moved full function definitions here to avoid declaration errors
+    function updateWalletUI() {
+        if (state.connected) {
+            connectWalletBtn.classList.add('hidden');
+            walletInfoDiv.classList.remove('hidden');
+            const addr = state.address;
+            walletAddressSpan.textContent = `Signet: ${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}`;
+            swapBtn.textContent = 'Create Gasless Order';
+            swapBtn.disabled = false;
+        } else {
+            connectWalletBtn.classList.remove('hidden');
+            walletInfoDiv.classList.add('hidden');
+            swapBtn.textContent = 'Connect Wallet';
+            swapBtn.disabled = true;
+        }
+        updateBalancesUI();
+    };
+
+    function updateBalancesUI() {
+        const fromToken = fromTokenSelect.value;
+        const toToken = toTokenSelect.value;
+        fromBalanceDiv.textContent = `Balance: ${state.balances[fromToken] || 0}`;
+        toBalanceDiv.textContent = `Balance: ${state.balances[toToken] || 0}`;
     };
 
     // --- Initialization ---
@@ -139,8 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
         script.onload = () => console.log("Nostr Tools loaded.");
         document.body.appendChild(script);
 
-        // Curated Signet Token List
-        const signetTokens = ['SAT', 'TEST', 'ATOM'];
+        const signetTokens = ['SAT', 'TEST', 'ATOM', 'BTC'];
         signetTokens.forEach(ticker => {
             fromTokenSelect.add(new Option(ticker, ticker));
             toTokenSelect.add(new Option(ticker, ticker));
@@ -150,7 +158,6 @@ document.addEventListener('DOMContentLoaded', () => {
             toTokenSelect.value = 'TEST';
         }
         
-        // Event Listeners
         connectWalletBtn.addEventListener('click', handleConnectWallet);
         cancelSwapBtn.addEventListener('click', () => confirmationModal.classList.add('hidden'));
     };
