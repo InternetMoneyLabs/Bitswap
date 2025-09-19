@@ -53,29 +53,30 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- Definitive Wallet Connection Logic ---
+    // --- The Definitive Wallet Connection Logic ---
     async function handleWalletSelection(event) {
         const button = event.currentTarget;
         const walletType = button.dataset.wallet;
 
+        // Provide immediate feedback
+        button.disabled = true;
+        const originalText = button.querySelector('span').textContent;
+        button.querySelector('span').textContent = 'Connecting...';
+
         if (walletType === 'wizz') {
-            // Step 1: Provide immediate user feedback to show the app is working.
-            button.disabled = true;
-            const originalText = button.querySelector('span').textContent;
-            button.querySelector('span').textContent = 'Connecting...';
-
-            // Step 2: THE CRITICAL FIX - Wait for the next "tick" of the browser's event loop.
-            // This tiny delay gives the Wizz Wallet extension time to respond to the user's click.
-            await new Promise(resolve => setTimeout(resolve, 50)); 
-
             try {
-                // Step 3: Now, confidently check for the wallet.
-                if (!window.wizz || !window.wizz.isInstalled) {
-                    throw new Error("Wizz Wallet not found. Please install the extension.");
+                // THE CRITICAL CHANGE: We no longer check if `window.wizz` exists first.
+                // We directly attempt the connection. This avoids all race conditions.
+                
+                // This line will throw a TypeError if `window.wizz` is undefined.
+                const wizz = window.wizz;
+
+                if (!wizz || !wizz.isInstalled) {
+                    // This case is for obscure situations where the object might exist but isn't ready.
+                    throw new Error("Wizz Wallet not found.");
                 }
 
-                const wizz = window.wizz;
-                
+                // If we get past the line above, the wallet object exists. Now we can use it.
                 const networkState = await wizz.getNetwork();
                 if (networkState.network.toLowerCase() !== config.NETWORK) {
                     throw new Error(`Please switch Wizz Wallet to the ${config.NETWORK} network.`);
@@ -92,14 +93,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 showNotification('Signet Wallet Connected!', 'success');
 
             } catch (error) {
-                // Step 4: Handle all errors gracefully.
-                showNotification(error.message, 'error');
-                if (error.message.includes("not found")) {
-                    window.open('https://wizz.cash/', '_blank');
+                // This catch block now handles ALL failures gracefully within our UI.
+                console.error("Connection error:", error);
+
+                if (error instanceof TypeError || error.message.includes("not found")) {
+                    // This means window.wizz didn't exist. It's not installed.
+                    // NO REDIRECT. We inform the user.
+                    showNotification("Wizz Wallet not found. Please install the extension.", 'error');
+                } else {
+                    // This handles all other errors, like the user rejecting the connection
+                    // or being on the wrong network.
+                    showNotification(error.message, 'error');
                 }
-                console.error("Wizz connection error:", error);
             } finally {
-                // Step 5: Always restore the button to its original state.
+                // Always restore the button after the attempt.
                 button.disabled = false;
                 button.querySelector('span').textContent = originalText;
             }
