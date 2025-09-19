@@ -18,35 +18,24 @@
         </header>
 
         <main class="swap-box">
+            <!-- Swap interface remains the same -->
             <h2>Swap ARC-20 Tokens</h2>
             <div class="swap-interface">
-                <!-- From Token -->
                 <div class="token-input-container">
                     <div class="token-input">
                         <input type="number" id="from-amount" placeholder="0.0">
                         <div class="token-selector">
-                            <select id="from-token-select">
-                                <option value="ATOM">ATOM</option>
-                                <option value="PEPE">PEPE</option>
-                                <option value="ORDI">ORDI</option>
-                            </select>
+                            <select id="from-token-select"></select>
                         </div>
                     </div>
                     <div class="balance" id="from-balance">Balance: -</div>
                 </div>
-
                 <div class="swap-arrow">↓</div>
-
-                <!-- To Token -->
                 <div class="token-input-container">
                      <div class="token-input">
                         <input type="number" id="to-amount" placeholder="0.0" readonly>
                         <div class="token-selector">
-                             <select id="to-token-select">
-                                <option value="PEPE">PEPE</option>
-                                <option value="ATOM">ATOM</option>
-                                <option value="ORDI">ORDI</option>
-                            </select>
+                             <select id="to-token-select"></select>
                         </div>
                     </div>
                     <div class="balance" id="to-balance">Balance: -</div>
@@ -54,29 +43,24 @@
             </div>
             <button id="swap-btn" class="cta-btn" disabled>Connect Wallet to Swap</button>
         </main>
-
-        <section class="order-book-section">
-            <h3>Live Order Book</h3>
-            <div id="order-book-display">
-                <p>Connect wallet to view orders.</p>
-            </div>
-        </section>
     </div>
 
-    <!-- Confirmation Modal -->
-    <div id="confirmation-modal" class="modal-overlay hidden">
+    <!-- NEW: Wallet Selection Modal -->
+    <div id="wallet-modal" class="modal-overlay hidden">
         <div class="modal-content">
-            <h3>Confirm Swap</h3>
-            <p>You are about to swap:</p>
-            <div class="summary" id="swap-summary"></div>
-            <div class="modal-actions">
-                <button id="confirm-swap-btn" class="cta-btn">Confirm</button>
-                <button id="cancel-swap-btn">Cancel</button>
+            <h3>Connect a Wallet</h3>
+            <div class="wallet-options">
+                <button class="wallet-option" id="connect-wizz">
+                    <img src="https://www.wizz.cash/logo.svg" alt="Wizz Wallet">
+                    <span>Wizz Wallet</span>
+                </button>
+                <!-- Add other wallet options here in the future -->
             </div>
+            <button id="close-modal-btn">Cancel</button>
         </div>
     </div>
     
-    <!-- Notification Toast -->
+    <!-- Notification Toast remains the same -->
     <div id="notification-toast" class="hidden"></div>
 
     <script src="app.js"></script>
