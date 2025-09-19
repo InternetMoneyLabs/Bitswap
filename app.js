@@ -53,23 +53,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- Corrected, On-Demand Wallet Connection Logic ---
+    // --- Definitive Wallet Connection Logic ---
     async function handleWalletSelection(event) {
         const walletType = event.currentTarget.dataset.wallet;
 
         if (walletType === 'wizz') {
-            // Give the browser a moment to respond to the click before checking for the wallet
-            await new Promise(resolve => setTimeout(resolve, 100));
-
-            if (!window.wizz || !window.wizz.isInstalled) {
-                showNotification("Wizz Wallet not found. Please install the extension.", 'error');
-                // Only redirect if we are sure it's not there
-                window.open('https://wizz.cash/', '_blank');
-                return;
-            }
-
-            const wizz = window.wizz;
+            // We assume the wallet might exist and try to use it directly.
+            // The error handling will catch cases where it's not installed.
             try {
+                // This is the crucial line. If `window.wizz` doesn't exist, this will throw a TypeError.
+                const wizz = window.wizz;
+                
+                // If it exists, proceed with the connection.
                 const networkState = await wizz.getNetwork();
                 if (networkState.network.toLowerCase() !== config.NETWORK) {
                     showNotification(`Please switch Wizz Wallet to the ${config.NETWORK} network.`, 'error');
@@ -87,8 +82,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 showNotification('Signet Wallet Connected!', 'success');
 
             } catch (error) {
-                console.error("Wizz connection error:", error);
-                showNotification("Connection was rejected.", 'error');
+                // This 'catch' block is now the ONLY place we check for installation.
+                if (error instanceof TypeError) {
+                    // This error means `window.wizz` was undefined, so the wallet is not installed.
+                    showNotification("Wizz Wallet not found. Please install the extension.", 'error');
+                    window.open('https://wizz.cash/', '_blank'); // Open install page for convenience
+                } else {
+                    // This handles other errors, like the user rejecting the connection.
+                    console.error("Wizz connection error:", error);
+                    showNotification("Connection was rejected or failed.", 'error');
+                }
             }
         }
     }
@@ -115,7 +118,6 @@ document.addEventListener('DOMContentLoaded', () => {
             walletModal.classList.add('hidden');
         });
         
-        // Attach the event listener to all buttons with the `data-wallet` attribute
         document.querySelectorAll('.wallet-option[data-wallet]').forEach(button => {
             button.addEventListener('click', handleWalletSelection);
         });
