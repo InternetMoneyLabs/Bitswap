@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
         address: null,
         publicKey: null,
         balances: {},
-        wizzWallet: null,
+        wizzWallet: null, // This will hold the detected wallet object
     };
 
     // --- DOM Elements ---
@@ -56,57 +56,57 @@ document.addEventListener('DOMContentLoaded', () => {
         confirmationModal.classList.remove('hidden');
     };
     
-    // --- Definitive Multi-Stage Wallet Detector ---
+    // --- The Definitive, Event-Driven Wallet Detector ---
     let walletDetectionPromise = null;
 
     function findWizzWallet() {
-        if (walletDetectionPromise) {
-            return walletDetectionPromise;
-        }
-
-        walletDetectionPromise = new Promise((resolve, reject) => {
-            const startDetection = () => {
-                let attempts = 0;
-                const maxAttempts = 15; // Wait up to 3 seconds
-
-                const interval = setInterval(() => {
+        // Use a promise to ensure we only run this detection once.
+        if (!walletDetectionPromise) {
+            walletDetectionPromise = new Promise((resolve, reject) => {
+                
+                // Set a timeout to act as a final fallback.
+                const detectionTimeout = setTimeout(() => {
+                    // If, after all events, window.wizz is still not here, we fail with a diagnostic.
                     if (window.wizz && window.wizz.isInstalled) {
-                        clearInterval(interval);
-                        console.log("Wizz Wallet detected successfully.");
-                        return resolve(window.wizz);
+                        resolve(window.wizz);
+                    } else if (window.ethereum) {
+                        reject(new Error("Conflict Detected: MetaMask (or another wallet) is active, but Wizz Wallet did not load. Please try disabling other wallet extensions and refresh."));
+                    } else {
+                        reject(new Error("Wizz Wallet not found. Please ensure it is installed, enabled, and your browser is up to date."));
                     }
-                    
-                    attempts++;
+                }, 3000); // Wait a generous 3 seconds.
 
-                    if (attempts >= maxAttempts) {
-                        clearInterval(interval);
-                        // Intelligent Error Reporting after failing
-                        if (window.ethereum) {
-                            reject(new Error("Conflict Detected: Another wallet (like MetaMask) is active, but Wizz Wallet is not responding. Please try disabling other wallet extensions and refresh."));
-                        } else {
-                            reject(new Error("Wizz Wallet not found. Please ensure it is installed, enabled, and that your browser is up to date."));
+                // The PRIMARY method: Listen for the official event from the wallet.
+                window.addEventListener('wizz.installed', () => {
+                    console.log("`wizz.installed` event detected!");
+                    clearTimeout(detectionTimeout); // Success, cancel the fallback timeout.
+                    if (window.wizz && window.wizz.isInstalled) {
+                        resolve(window.wizz);
+                    } else {
+                        reject(new Error("Wallet event fired, but `window.wizz` is not available."));
+                    }
+                }, { once: true }); // Listen only once.
+
+                // The SECONDARY method: Check after the entire page has loaded.
+                window.addEventListener('load', () => {
+                    setTimeout(() => { // Give it a tiny extra moment after load
+                        if (window.wizz && window.wizz.isInstalled) {
+                            console.log("Wizz Wallet found on page load.");
+                            clearTimeout(detectionTimeout);
+                            resolve(window.wizz);
                         }
-                    }
-                }, 200);
-            };
-
-            // Wait for the entire window to load before starting detection
-            if (document.readyState === 'complete') {
-                startDetection();
-            } else {
-                window.addEventListener('load', startDetection, { once: true });
-            }
-        });
-        
+                    }, 100);
+                }, { once: true });
+            });
+        }
         return walletDetectionPromise;
     }
 
-
     async function handleConnectWallet() {
+        connectWalletBtn.disabled = true;
+        connectWalletBtn.textContent = 'Scanning...';
+
         try {
-            connectWalletBtn.disabled = true;
-            connectWalletBtn.textContent = 'Scanning...';
-            
             const wizz = await findWizzWallet();
             state.wizzWallet = wizz;
             
@@ -129,10 +129,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (error) {
             console.error(error);
-            showNotification(error.message, 'error', 12000);
+_            showNotification(error.message, 'error', 12000);
             connectWalletBtn.disabled = false;
             connectWalletBtn.textContent = 'Retry Connection';
-            // Reset promise to allow re-scanning
+            // Reset the promise on failure, allowing the user to try again.
             walletDetectionPromise = null;
         }
     };
@@ -176,8 +176,9 @@ document.addEventListener('DOMContentLoaded', () => {
             state.wizzWallet = wizz;
             console.log("Wizz Wallet pre-emptively detected.");
             showNotification("Wizz Wallet detected! Click 'Connect' to proceed.", 'info');
-        }).catch(() => {
-            console.warn("Wizz Wallet not found on initial scan. Waiting for user action.");
+        }).catch((err) => {
+            // Don't show an error here, just log it. The user will see the error when they click the button.
+            console.warn("Wizz Wallet not found on initial scan:", err.message);
         });
     };
 
