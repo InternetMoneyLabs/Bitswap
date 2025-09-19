@@ -45,22 +45,21 @@
         </main>
     </div>
 
-    <!-- NEW: Wallet Selection Modal -->
+    <!-- Wallet Selection Modal -->
     <div id="wallet-modal" class="modal-overlay hidden">
         <div class="modal-content">
             <h3>Connect a Wallet</h3>
             <div class="wallet-options">
-                <button class="wallet-option" id="connect-wizz">
-                    <img src="https://www.wizz.cash/logo.svg" alt="Wizz Wallet">
+                <!-- IMPORTANT: Added data-wallet attribute -->
+                <button class="wallet-option" data-wallet="wizz">
+                    <img src="https://www.wizz.cash/logo.svg" alt="Wizz Wallet Logo">
                     <span>Wizz Wallet</span>
                 </button>
-                <!-- Add other wallet options here in the future -->
             </div>
             <button id="close-modal-btn">Cancel</button>
         </div>
     </div>
     
-    <!-- Notification Toast remains the same -->
     <div id="notification-toast" class="hidden"></div>
 
     <script src="app.js"></script>

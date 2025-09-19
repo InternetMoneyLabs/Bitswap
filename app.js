@@ -23,7 +23,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Modal Elements
     const walletModal = document.getElementById('wallet-modal');
-    const connectWizzBtn = document.getElementById('connect-wizz');
     const closeModalBtn = document.getElementById('close-modal-btn');
 
     // Token Selectors
@@ -54,40 +53,43 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- The New, On-Demand Wallet Connection Logic ---
-    async function connectWizzWallet() {
-        // Step 1: Check for the wallet *at the moment the user clicks*.
-        if (!window.wizz || !window.wizz.isInstalled) {
-            showNotification("Wizz Wallet not found. Please install the extension.", 'error');
-            window.open('https://wizz.cash/', '_blank'); // Open install page for convenience
-            return;
-        }
+    // --- Corrected, On-Demand Wallet Connection Logic ---
+    async function handleWalletSelection(event) {
+        const walletType = event.currentTarget.dataset.wallet;
 
-        const wizz = window.wizz;
+        if (walletType === 'wizz') {
+            // Give the browser a moment to respond to the click before checking for the wallet
+            await new Promise(resolve => setTimeout(resolve, 100));
 
-        try {
-            // Step 2: Request network and accounts.
-            const networkState = await wizz.getNetwork();
-            if (networkState.network.toLowerCase() !== config.NETWORK) {
-                showNotification(`Please switch Wizz Wallet to the ${config.NETWORK} network.`, 'error');
+            if (!window.wizz || !window.wizz.isInstalled) {
+                showNotification("Wizz Wallet not found. Please install the extension.", 'error');
+                // Only redirect if we are sure it's not there
+                window.open('https://wizz.cash/', '_blank');
                 return;
             }
 
-            const accounts = await wizz.requestAccounts();
-            state.connected = true;
-            state.address = accounts[0];
-            state.balances = await wizz.getBalances();
-            state.publicKey = await wizz.getPublicKey();
-            
-            // Step 3: Update UI and close modal on success.
-            updateWalletUI();
-            walletModal.classList.add('hidden');
-            showNotification('Signet Wallet Connected!', 'success');
+            const wizz = window.wizz;
+            try {
+                const networkState = await wizz.getNetwork();
+                if (networkState.network.toLowerCase() !== config.NETWORK) {
+                    showNotification(`Please switch Wizz Wallet to the ${config.NETWORK} network.`, 'error');
+                    return;
+                }
 
-        } catch (error) {
-            // This catches if the user rejects the connection.
-            console.error("Wizz connection error:", error);
-            showNotification("Connection was rejected.", 'error');
+                const accounts = await wizz.requestAccounts();
+                state.connected = true;
+                state.address = accounts[0];
+                state.balances = await wizz.getBalances();
+                state.publicKey = await wizz.getPublicKey();
+                
+                updateWalletUI();
+                walletModal.classList.add('hidden');
+                showNotification('Signet Wallet Connected!', 'success');
+
+            } catch (error) {
+                console.error("Wizz connection error:", error);
+                showNotification("Connection was rejected.", 'error');
+            }
         }
     }
     
@@ -105,19 +107,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         // --- Event Listeners ---
-        
-        // Main button opens the wallet selection modal
         connectWalletBtn.addEventListener('click', () => {
             walletModal.classList.remove('hidden');
         });
 
-        // Close button in the modal
         closeModalBtn.addEventListener('click', () => {
             walletModal.classList.add('hidden');
         });
         
-        // The specific button for Wizz Wallet inside the modal
-        connectWizzBtn.addEventListener('click', connectWizzWallet);
+        // Attach the event listener to all buttons with the `data-wallet` attribute
+        document.querySelectorAll('.wallet-option[data-wallet]').forEach(button => {
+            button.addEventListener('click', handleWalletSelection);
+        });
     };
 
     init();
